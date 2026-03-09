@@ -1,0 +1,17 @@
+#!/bin/bash
+# Shared utilities for hyprwhspr-mic scripts.
+
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/hyprwhspr-mic"
+CONFIG_FILE="$CONFIG_DIR/config.json"
+
+# Read config value with jq, falling back to a default
+cfg() {
+  local key="$1" default="$2"
+  if [[ -f "$CONFIG_FILE" ]]; then
+    local val
+    val=$(jq -r ".$key // empty" "$CONFIG_FILE" 2>/dev/null)
+    echo "${val:-$default}"
+  else
+    echo "$default"
+  fi
+}

@@ -1,0 +1,117 @@
+#!/bin/bash
+# Waybar module for hyprwhspr with mic name display and switching.
+#
+# Usage (in Waybar module config):
+#   exec:            hyprwhspr-mic-waybar status
+#   on-click:        hyprwhspr-mic-waybar record
+#   on-click-right:  hyprwhspr-mic-waybar restart
+#   on-click-middle: hyprwhspr-mic-waybar switch
+#   on-scroll-up/down: hyprwhspr-mic-waybar toggle-mute
+#
+# Config: ~/.config/hyprwhspr-mic/config.json
+#   mic_labels   - object mapping source name substrings to friendly labels
+#   mute_others  - true/false, toggled via scroll
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/hyprwhspr-mic-common"
+
+TRAY_SCRIPT="/usr/lib/hyprwhspr/config/hyprland/hyprwhspr-tray.sh"
+
+# Map PulseAudio source names to friendly labels.
+# Checks config file first, falls back to built-in defaults.
+mic_label() {
+  local source="$1"
+
+  # Try config-based labels
+  if [[ -f "$CONFIG_FILE" ]]; then
+    local label
+    label=$(jq -r --arg src "$source" '
+      .mic_labels // {} | to_entries[] |
+      select($src | test(.key)) | .value
+    ' "$CONFIG_FILE" 2>/dev/null | head -1)
+    if [[ -n "$label" ]]; then
+      echo "$label"
+      return
+    fi
+  fi
+
+  # Fallback defaults
+  case "$source" in
+    *StreamCam*)    echo "StreamCam" ;;
+    *analog-stereo) echo "Headset" ;;
+    *)              echo "$source" ;;
+  esac
+}
+
+# Switch default source to the next available mic
+do_switch() {
+  local sources current other
+  sources=($(pactl list short sources | grep -v monitor | awk '{print $2}'))
+
+  if [[ ${#sources[@]} -lt 2 ]]; then
+    return 1
+  fi
+
+  current="$(pactl get-default-source)"
+  for s in "${sources[@]}"; do
+    [[ "$s" != "$current" ]] && { other="$s"; break; }
+  done
+
+  [[ -n "$other" ]] && pactl set-default-source "$other"
+}
+
+# Toggle a boolean config key in config.json
+toggle_cfg() {
+  local key="$1"
+  local current
+  current=$(cfg "$key" true)
+  local new_val
+  [[ "$current" == "true" ]] && new_val=false || new_val=true
+
+  if [[ -f "$CONFIG_FILE" ]]; then
+    local tmp
+    tmp=$(jq --arg k "$key" --argjson v "$new_val" '.[$k] = $v' "$CONFIG_FILE")
+    echo "$tmp" > "$CONFIG_FILE"
+  fi
+}
+
+case "${1:-status}" in
+  switch)
+    do_switch
+    exec "$0" status
+    ;;
+  record)
+    "$SCRIPT_DIR/hyprwhspr-mic" record
+    exec "$0" status
+    ;;
+  restart)
+    "$TRAY_SCRIPT" restart
+    exec "$0" status
+    ;;
+  toggle-mute)
+    toggle_cfg mute_others
+    exec "$0" status
+    ;;
+  *)
+    # Get original JSON from hyprwhspr-tray.sh
+    json=$("$TRAY_SCRIPT" "$@")
+
+    # Get current mic label
+    default_source="$(pactl get-default-source 2>/dev/null)"
+    label="$(mic_label "$default_source")"
+
+    # Read mute setting
+    mute_state="$(cfg mute_others true)"
+    [[ "$mute_state" == "true" ]] && mute_display="on" || mute_display="off"
+
+    # Inject mic label into text field (append after icon)
+    # and build tooltip with status + controls
+    if [[ -n "$label" && -n "$json" ]]; then
+      json=$(echo "$json" | sed \
+        -e "s/\"text\":\"\([^\"]*\)\"/\"text\":\"\1 $label\"/" \
+        -e "s/\"tooltip\":\"\([^\"]*\)\"/\"tooltip\":\"Active mic: $label\\\\nMute others: $mute_display\\\\n\\\\n\1\\\\nMiddle-click: Switch mic\\\\nScroll: Toggle mute\"/")
+    fi
+
+    echo "$json"
+    ;;
+esac

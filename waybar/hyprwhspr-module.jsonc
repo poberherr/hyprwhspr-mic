@@ -1,0 +1,15 @@
+{
+  "custom/hyprwhspr": {
+    "format": "{}",
+    "exec": "hyprwhspr-mic-waybar status",
+    "interval": 1,
+    "return-type": "json",
+    "exec-on-event": true,
+    "on-click": "hyprwhspr-mic-waybar record",
+    "on-click-right": "hyprwhspr-mic-waybar restart",
+    "on-click-middle": "hyprwhspr-mic-waybar switch",
+    "on-scroll-up": "hyprwhspr-mic-waybar toggle-mute",
+    "on-scroll-down": "hyprwhspr-mic-waybar toggle-mute",
+    "tooltip": true
+  }
+}

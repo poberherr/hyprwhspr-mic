@@ -1,0 +1,9 @@
+{
+  "mute_others": true,
+  "reset_volume": true,
+  "reset_volume_percent": 100,
+  "mic_labels": {
+    "StreamCam": "StreamCam",
+    "analog-stereo": "Headset"
+  }
+}
