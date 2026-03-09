@@ -7,14 +7,16 @@ Mic management wrapper for [hyprwhspr](https://github.com/feschber/hyprwhspr) �
 - **Auto-mute other apps** during hyprwhspr recording (PipeWire/PulseAudio)
 - **Reset mic volume** to a configured level before each recording
 - **Configurable** — enable/disable muting and volume reset via JSON config
-- **Waybar module** — shows recording status, active mic name, and supports click actions (record, restart, switch mic)
-- **Mic switching** — toggle between available microphones via Waybar middle-click
+- **Waybar module** — shows recording status, active mic name, with a fuzzel dropdown menu
+- **Mic switching** — toggle between available microphones
 
 ## Dependencies
 
 - [hyprwhspr](https://github.com/feschber/hyprwhspr) (installed and running as a systemd user service)
 - `pactl` (PipeWire/PulseAudio)
 - `jq`
+- `fuzzel` (for the Waybar dropdown menu)
+- `hyprctl` (for cursor positioning)
 
 ## Install
 
@@ -24,7 +26,7 @@ cd hyprwhspr-mic
 ./install.sh
 ```
 
-This symlinks `hyprwhspr-mic` and `hyprwhspr-mic-waybar` into `~/.local/bin/`, copies an example config, and links the Waybar module.
+This symlinks `hyprwhspr-mic`, `hyprwhspr-mic-common`, and `hyprwhspr-mic-waybar` into `~/.local/bin/`, copies an example config, and links the Waybar module.
 
 ## Configuration
 
@@ -70,10 +72,11 @@ Add to your Waybar config:
 
 And add `"custom/hyprwhspr"` to your `modules-right` (or wherever you prefer).
 
-**Click actions:**
-- Left-click: Toggle recording
-- Right-click: Restart hyprwhspr service
-- Middle-click: Switch microphone
+**Left-click** opens a dropdown menu with:
+- Record — toggle recording
+- Switch mic to *X* — switch to the other available microphone
+- Mute others: ON/OFF — toggle muting other apps during recording
+- Restart service — restart hyprwhspr
 
 ## License
 
