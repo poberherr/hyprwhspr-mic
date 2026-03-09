@@ -4,13 +4,12 @@
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/hyprwhspr-mic"
 CONFIG_FILE="$CONFIG_DIR/config.json"
 
-# Read config value with jq, falling back to a default
+# Read config value with jq, falling back to a default.
+# Handles JSON booleans correctly (false is a valid value, not missing).
 cfg() {
   local key="$1" default="$2"
-  if [[ -f "$CONFIG_FILE" ]]; then
-    local val
-    val=$(jq -r ".$key // empty" "$CONFIG_FILE" 2>/dev/null)
-    echo "${val:-$default}"
+  if [[ -f "$CONFIG_FILE" ]] && jq -e "has(\"$key\")" "$CONFIG_FILE" &>/dev/null; then
+    jq -r ".$key" "$CONFIG_FILE"
   else
     echo "$default"
   fi
