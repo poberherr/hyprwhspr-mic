@@ -3,14 +3,11 @@
 #
 # Usage (in Waybar module config):
 #   exec:            hyprwhspr-mic-waybar status
-#   on-click:        hyprwhspr-mic-waybar record
-#   on-click-right:  hyprwhspr-mic-waybar restart
-#   on-click-middle: hyprwhspr-mic-waybar switch
-#   on-scroll-up/down: hyprwhspr-mic-waybar toggle-mute
+#   on-click:        hyprwhspr-mic-waybar menu
 #
 # Config: ~/.config/hyprwhspr-mic/config.json
 #   mic_labels   - object mapping source name substrings to friendly labels
-#   mute_others  - true/false, toggled via scroll
+#   mute_others  - true/false, toggled via menu
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/hyprwhspr-mic-common"
@@ -43,21 +40,22 @@ mic_label() {
   esac
 }
 
-# Switch default source to the next available mic
-do_switch() {
-  local sources current other
+# Get the next available mic source name (not the current one)
+next_mic_source() {
+  local sources current
   sources=($(pactl list short sources | grep -v monitor | awk '{print $2}'))
-
-  if [[ ${#sources[@]} -lt 2 ]]; then
-    return 1
-  fi
-
+  [[ ${#sources[@]} -lt 2 ]] && return 1
   current="$(pactl get-default-source)"
   for s in "${sources[@]}"; do
-    [[ "$s" != "$current" ]] && { other="$s"; break; }
+    [[ "$s" != "$current" ]] && { echo "$s"; return; }
   done
+}
 
-  [[ -n "$other" ]] && pactl set-default-source "$other"
+# Switch default source to the next available mic
+do_switch() {
+  local other
+  other=$(next_mic_source) || return 1
+  pactl set-default-source "$other"
 }
 
 # Toggle a boolean config key in config.json
@@ -75,7 +73,68 @@ toggle_cfg() {
   fi
 }
 
+# Show fuzzel menu anchored below the waybar
+do_menu() {
+  local default_source label mute_state mute_label next_source next_label switch_label
+  default_source="$(pactl get-default-source 2>/dev/null)"
+  label="$(mic_label "$default_source")"
+  mute_state="$(cfg mute_others true)"
+  [[ "$mute_state" == "true" ]] && mute_label="Mute others: ON" || mute_label="Mute others: OFF"
+  next_source=$(next_mic_source 2>/dev/null)
+  next_label="$(mic_label "${next_source:-}")"
+  switch_label="Switch mic to $next_label"
+
+  # Position menu under the cursor, relative to the focused monitor.
+  local cursor_x mon_x mon_w rel_x menu_w x_margin
+  cursor_x=$(hyprctl cursorpos 2>/dev/null | cut -d, -f1 | tr -d ' ')
+  eval "$(hyprctl monitors -j 2>/dev/null | jq -r \
+    --argjson cx "${cursor_x:-0}" '
+    .[] | select(.x <= $cx and $cx < (.x + .width)) |
+    "mon_x=\(.x) mon_w=\(.width)"' | head -1)"
+  rel_x=$(( cursor_x - ${mon_x:-0} ))
+  menu_w=300
+  # center menu on cursor, clamp to screen edges
+  x_margin=$(( rel_x - menu_w / 2 ))
+  (( x_margin < 0 )) && x_margin=0
+  (( x_margin + menu_w > ${mon_w:-3840} )) && x_margin=$(( ${mon_w:-3840} - menu_w ))
+
+  local choice
+  choice=$(printf '%s\n' \
+    "Record" \
+    "$switch_label" \
+    "$mute_label" \
+    "Restart service" \
+    | fuzzel --dmenu \
+        --anchor top-left \
+        --x-margin "${x_margin}" \
+        --y-margin 30 \
+        --font "monospace:size=9" \
+        --lines 4 \
+        --width 25 \
+        --no-icons \
+        --prompt "hyprwhspr > " \
+        --background-color 1e1e2eff \
+        --text-color cdd6f4ff \
+        --selection-color 45475aff \
+        --selection-text-color cdd6f4ff \
+        --match-color f38ba8ff \
+        --border-color 6c7086ff \
+        --border-width 2 \
+        --border-radius 8 \
+        --prompt-color 89b4faff)
+
+  case "$choice" in
+    Record*)              "$SCRIPT_DIR/hyprwhspr-mic" record ;;
+    "Switch mic"*)         do_switch ;;
+    "Mute others"*)       toggle_cfg mute_others ;;
+    "Restart service"*)   "$TRAY_SCRIPT" restart ;;
+  esac
+}
+
 case "${1:-status}" in
+  menu)
+    do_menu
+    ;;
   switch)
     do_switch
     exec "$0" status
@@ -105,11 +164,11 @@ case "${1:-status}" in
     [[ "$mute_state" == "true" ]] && mute_display="on" || mute_display="off"
 
     # Inject mic label into text field (append after icon)
-    # and build tooltip with status + controls
+    # and add mic info to tooltip
     if [[ -n "$label" && -n "$json" ]]; then
       json=$(echo "$json" | sed \
         -e "s/\"text\":\"\([^\"]*\)\"/\"text\":\"\1 $label\"/" \
-        -e "s/\"tooltip\":\"\([^\"]*\)\"/\"tooltip\":\"Active mic: $label\\\\nMute others: $mute_display\\\\n\\\\n\1\\\\nMiddle-click: Switch mic\\\\nScroll: Toggle mute\"/")
+        -e "s/\"tooltip\":\"\([^\"]*\)\"/\"tooltip\":\"Active mic: $label\\\\nMute others: $mute_display\\\\n\\\\n\1\"/")
     fi
 
     echo "$json"
