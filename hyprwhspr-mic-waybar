@@ -84,6 +84,14 @@ do_menu() {
   next_label="$(mic_label "${next_source:-}")"
   switch_label="Switch mic to $next_label"
 
+  # Check if hyprwhspr service is active
+  local svc_active svc_label
+  if systemctl --user is-active hyprwhspr.service &>/dev/null; then
+    svc_label="Deactivate hyprwhspr"
+  else
+    svc_label="Activate hyprwhspr"
+  fi
+
   # Position menu under the cursor, relative to the focused monitor.
   local cursor_x mon_x mon_w rel_x menu_w x_margin
   cursor_x=$(hyprctl cursorpos 2>/dev/null | cut -d, -f1 | tr -d ' ')
@@ -103,13 +111,14 @@ do_menu() {
     "Record" \
     "$switch_label" \
     "$mute_label" \
+    "$svc_label" \
     "Restart service" \
     | fuzzel --dmenu \
         --anchor top-left \
         --x-margin "${x_margin}" \
         --y-margin 30 \
         --font "monospace:size=9" \
-        --lines 4 \
+        --lines 5 \
         --width 25 \
         --no-icons \
         --prompt "hyprwhspr > " \
@@ -127,6 +136,8 @@ do_menu() {
     Record*)              "$SCRIPT_DIR/hyprwhspr-mic" record ;;
     "Switch mic"*)         do_switch ;;
     "Mute others"*)       toggle_cfg mute_others ;;
+    "Deactivate"*)        systemctl --user stop hyprwhspr.service ;;
+    "Activate"*)          systemctl --user start hyprwhspr.service ;;
     "Restart service"*)   "$TRAY_SCRIPT" restart ;;
   esac
 }
@@ -152,6 +163,12 @@ case "${1:-status}" in
     exec "$0" status
     ;;
   *)
+    # If hyprwhspr service is not running, show a static "down" status
+    if ! systemctl --user is-active hyprwhspr.service &>/dev/null; then
+      echo '{"text":"hyprwhspr down","tooltip":"hyprwhspr service is not running","class":"inactive"}'
+      exit 0
+    fi
+
     # Get original JSON from hyprwhspr-tray.sh
     json=$("$TRAY_SCRIPT" "$@")
 
